@@ -1,15 +1,17 @@
 ---
 title: 'Psych 251 PS4: Simulation'
-author: "Mike Frank"
+author: "Jinxiao Zhang"
 date: "2018"
 output: 
   html_document:
     toc: true
 ---
 
+Note: *My answers begin with '>'*
+
 This is problem set #4, in which we want you to integrate your knowledge of data wrangling with some basic simulation skills. It's a short problem set to help you get your feet wet in testing statistical concepts through "making up data" rather than consulting a textbook or doing math. 
 
-For ease of reading, please separate your answers from our text by marking our text with the `>` character (indicating quotes). 
+For ease of reading, please separate your answers from our text by marking your text with the `>` character (indicating quotes). 
 
 ```{r}
 library(tidyverse)
@@ -20,11 +22,24 @@ Let's start by convincing ourselves that t-tests have the appropriate false posi
 First do this using a `for` loop.
 
 ```{r}
+count = 0
+
+for (i in 1:10000){
+  data = rnorm(30, mean = 0, sd = 1)
+  stats = t.test(data, mu = 0)
+  if (stats$p.value < .05) {
+    count = count +1  
+  }
+}
+proportion = count / 10000
 ```
+> The proportion is `r proportion` in 10,000 times of simulation.
 
 Next, do this using the `replicate` function:
 
 ```{r}
+results <- replicate(10000, t.test(rnorm(30, 0, 1), mu = 0)$p.value)
+length(which(results< .05))/10000
 ```
 
 Ok, that was a bit boring. Let's try something more interesting - let's implement a p-value sniffing simulation, in the style of Simons, Nelson, & Simonsohn (2011).
@@ -35,17 +50,30 @@ First, write a function that implements this sampling regime.
 
 ```{r}
 double.sample <- function () {
+  data = rnorm(30,0,1)
+  if (t.test(data, mu = 0)$p.value < .25 & t.test(data, mu = 0)$p.value > .05){
+    data <- append(data, rnorm(30,0,1))
+  }
+  return(data)
 }
 ```
 
 Now call this function 10k times and find out what happens. 
 
 ```{r}
+count = 0
+for (i in 1:10000){
+  data1 = double.sample()
+  if (t.test(data1, mu = 0)$p.value < .05){
+    count = count +1
+  }
+}
+p_inflated = count / 10000
 ```
 
 Is there an inflation of false positives? How bad is it?
 
-> ANSWER
+> ANSWER: Yes, the false-positive rate is inflated to `r p_inflated`. A simulation for 10k times does not generate a very stable false positive rate, but the inflation rate is about 40-50%. 
 
 Now modify this code so that you can investigate this "double the sample" rule in a bit more depth. Let's see what happens when you double the sample ANY time p > .05 (not just when p < .25), or when you do it only if p < .5 or < .75. How do these choices affect the false positive rate?
 
@@ -54,8 +82,38 @@ HINT: Try to do this by making the function `double.sample` take the upper p val
 HINT 2: You may need more samples. Find out by looking at how the results change from run to run.
 
 ```{r}
+double.sample2 <- function (p_low, p_high) {
+  data = rnorm(30,0,1)
+  if (t.test(data, mu = 0)$p.value < p_high & t.test(data, mu = 0)$p.value > p_low){
+    data <- append(data, rnorm(30,0,1))
+  }
+  return(data)
+}
+
+simulate <- function(n, p_low, p_high){
+  count = 0
+  for (i in 1:n){
+    data1 = double.sample2(p_low, p_high)
+    if (t.test(data1, mu = 0)$p.value < .05){
+      count = count +1
+    }
+  }
+  p_inflated = count / n
+  return(p_inflated)
+}
+
+# situation 1: anytime p > .05
+p_inflated1 = simulate(100000, .05, 1)
+
+# situation 2: only if p < .5
+p_inflated2 = simulate(100000, .05, .5)
+
+# situation 3: only if p < .75
+p_inflated3 = simulate(100000, .05, .75)
+
 ```
 
 What do you conclude on the basis of this simulation? How bad is this kind of data-dependent policy?
 
-> ANSWER
+> In a simulation for 100k times, the inflation rate is `r p_inflated1` for situation 1 (anytime p > .05), `r p_inflated2` for situation 2 (only if p < .5), `r p_inflated3` for situation 3 (only if p < .75). Optional stopping when p-value is below .05 while doubling the sample size when it is above inflates the false positive rate. As the high cutoff goes higher (e.g. from .25 to 1), the inflation rate goes higher. Such data-dependent policy will generate more reports of an effect while there is in fact none in the literature, which is misleading to the scientific community as well as the public.
+
